@@ -1,0 +1,17 @@
+{
+  "name": "resumetester",
+  "version": "1.0.0",
+  "description": "ATS Resume Tester & Optimizer - MERN Stack with Affinda and OpenAI",
+  "scripts": {
+    "server": "npm --prefix server start",
+    "server:dev": "npm --prefix server run dev",
+    "client": "npm --prefix client dev",
+    "build:client": "npm --prefix client run build",
+    "test": "npm --prefix server test",
+    "test:api": "node server/test_server_api.js",
+    "start": "npm --prefix server start"
+  },
+  "keywords": ["ats", "resume", "mern", "express", "react", "affinda", "openai"],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,31 @@
+Alex Mercer
+San Francisco, CA | (555) 234-5678 | alex.mercer@email.com | linkedin.com/in/alex-mercer | github.com/alexmercer
+
+PROFESSIONAL SUMMARY
+Results-driven Senior Software Engineer with 6+ years of experience architecting distributed backend services, high-throughput REST APIs, and scalable cloud infrastructure. Proven track record of improving system latency by 45% and leading cross-functional teams to deliver enterprise SaaS platforms.
+
+TECHNICAL SKILLS
+- Programming Languages: Python, JavaScript, TypeScript, Go, SQL, Bash
+- Frameworks & Libraries: FastAPI, Django, React, Node.js, Next.js, PyTorch
+- Cloud & Infrastructure: AWS (EC2, S3, Lambda), Docker, Kubernetes, Terraform, CI/CD, GitHub Actions
+- Databases & Storage: PostgreSQL, Redis, MongoDB, Elasticsearch
+- Methodologies & Tools: Agile, Scrum, Git, Jira, Microservices, System Design
+
+PROFESSIONAL EXPERIENCE
+Senior Backend Engineer | CloudScale Tech, San Francisco, CA | 2021 - Present
+- Architected and deployed microservices handling 25M+ daily requests using FastAPI, Python, and PostgreSQL, reducing API response latency by 42%.
+- Spearheaded database query optimization and indexing strategy in Redis and PostgreSQL, slashing server memory utilization by 30% and saving $45k annually in AWS cloud costs.
+- Led migration of 12 legacy monolith applications into Docker containers managed on Kubernetes (EKS), accelerating continuous deployment frequency by 3x.
+- Mentored 6 junior and mid-level software engineers across code reviews, unit testing best practices, and automated CI/CD pipelines.
+
+Software Engineer | NextGen Systems, San Jose, CA | 2018 - 2021
+- Developed scalable RESTful APIs with Python, Django, and React, serving over 500,000 active enterprise users.
+- Automated end-to-end integration testing using Pytest and GitHub Actions, boosting code coverage from 64% to 92%.
+- Partnered with product managers and UI/UX designers to redesign the core analytics dashboard, increasing daily user retention by 22%.
+
+EDUCATION
+Bachelor of Science in Computer Science | University of California, Berkeley | 2014 - 2018
+
+CERTIFICATIONS & PROJECTS
+- AWS Certified Solutions Architect - Associate (2023)
+- Real-Time Distributed Task Queue: Built an open-source task processing engine in Go and Redis with 1.2k+ GitHub stars.

@@ -1,0 +1,19 @@
+Senior Backend Engineer - Cloud Infrastructure
+
+About the Role:
+We are looking for a Senior Backend Engineer to join our high-growth platform engineering team. You will architect, build, and maintain mission-critical distributed services, cloud infrastructure, and data pipelines.
+
+Key Responsibilities:
+- Design, build, and deploy reliable, high-performance microservices and REST APIs.
+- Manage and scale cloud infrastructure on AWS using Docker, Kubernetes, and Terraform.
+- Optimize relational database queries in PostgreSQL and implement caching layers with Redis.
+- Champion CI/CD automation, unit testing, and agile engineering best practices.
+- Collaborate with frontend engineers, product managers, and architects to deliver customer value.
+
+Requirements & Qualifications:
+- 5+ years of software development experience with Python, Go, or TypeScript.
+- Strong proficiency with FastAPI, Django, or modern backend frameworks.
+- Production experience with Docker, Kubernetes, and AWS cloud services (EC2, S3, Lambda).
+- In-depth knowledge of PostgreSQL, Redis, and distributed systems architecture.
+- Hands-on experience building automated CI/CD pipelines (e.g. GitHub Actions).
+- Excellent communication and cross-functional leadership skills.
