@@ -4,8 +4,8 @@ const axios = require("axios");
 const FormData = require("form-data");
 const { extract } = require("./documentExtractor");
 
-async function parseResume(fileBuffer, filename) {
-  const apiKey = process.env.AFFINDA_API_KEY;
+async function parseResume(fileBuffer, filename, apiKeyOverride = null) {
+  const apiKey = apiKeyOverride || process.env.AFFINDA_API_KEY;
 
   if (!apiKey) {
     // No API key: use the built-in extractor
@@ -31,7 +31,8 @@ async function parseResume(fileBuffer, filename) {
 
     const data = response.data?.data || response.data;
     const rawText = data?.rawText || (await extract(fileBuffer, filename)).text;
-    const metadata = await extract(Buffer.from(rawText, "utf-8"), filename);
+    const metaFilename = filename.replace(/\.(pdf|docx?)$/i, ".txt");
+    const metadata = await extract(Buffer.from(rawText, "utf-8"), metaFilename);
 
     return {
       source: "Affinda API",

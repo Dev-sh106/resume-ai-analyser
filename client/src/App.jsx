@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
-import { Zap } from 'lucide-react'
+import { Zap, CheckCircle } from 'lucide-react'
 
 import NavBar from './components/NavBar'
 import ResumeInput from './components/ResumeInput'
@@ -13,6 +13,8 @@ export default function App() {
   // Resume input state
   const [file, setFile] = useState(null)
   const [resumeText, setResumeText] = useState('')
+  const [textModified, setTextModified] = useState(false)
+  const [downloadingReport, setDownloadingReport] = useState(false)
   const [jobDescription, setJobDescription] = useState('')
   const [editorTab, setEditorTab] = useState('upload')
 
@@ -27,7 +29,7 @@ export default function App() {
   const [generatingBulletFor, setGeneratingBulletFor] = useState(null)
   const [bulletModal, setBulletModal] = useState(null)
 
-  // Auth state — token in localStorage, but API keys are never stored client-side
+  // Auth state
   const [token, setToken] = useState(localStorage.getItem('token') || '')
   const [currentUser, setCurrentUser] = useState(null)
   const [showAuth, setShowAuth] = useState(false)
@@ -35,10 +37,10 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
 
   // Toast
-  const [toast, setToast] = useState('')
-  const notify = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3500)
+  const [toast, setToast] = useState(null)
+  const notify = (msg, type = 'info') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3500)
   }
 
   // Verify stored token on load
@@ -58,14 +60,14 @@ export default function App() {
     localStorage.setItem('token', newToken)
     setCurrentUser(user)
     setShowAuth(false)
-    notify(`Welcome, ${user.name}`)
+    notify(`Welcome back, ${user.name}!`, 'success')
   }
 
   const handleLogout = () => {
     setToken('')
     localStorage.removeItem('token')
     setCurrentUser(null)
-    notify('Logged out')
+    notify('Logged out successfully')
   }
 
   const fetchHistory = async () => {
@@ -80,7 +82,7 @@ export default function App() {
       setHistoryList(res.data)
       setShowHistory(true)
     } catch (err) {
-      notify(err.response?.data?.error || 'Could not load history')
+      notify(err.response?.data?.error || 'Could not load history', 'error')
     }
   }
 
@@ -89,16 +91,21 @@ export default function App() {
     const f = e.target.files[0]
     if (!f) return
     setFile(f)
+    setResumeText('')
+    setTextModified(false)
+    setResult(null)
     if (f.name.endsWith('.txt')) {
       const reader = new FileReader()
-      reader.onload = (ev) => setResumeText(ev.target.result)
+      reader.onload = (ev) => {
+        setResumeText(ev.target.result)
+        setTextModified(false)
+      }
       reader.readAsText(f)
     }
   }
 
-  // Sample data — clearly labelled as demo fixtures
+  // Sample data
   const handleLoadSampleGood = () => {
-    // Demo resume fixture — fictional data for testing purposes
     const sampleText = `Alex Mercer
 San Francisco, CA | (555) 234-5678 | alex.mercer@email.com | linkedin.com/in/alex-mercer | github.com/alexmercer
 
@@ -134,11 +141,12 @@ CERTIFICATIONS
     const blob = new Blob([sampleText], { type: 'text/plain' })
     setFile(new File([blob], 'demo_resume_good.txt', { type: 'text/plain' }))
     setResumeText(sampleText)
+    setTextModified(false)
+    setResult(null)
     notify('Loaded demo resume (sample data)')
   }
 
   const handleLoadSamplePoor = () => {
-    // Demo fixture for a weak resume
     const poorText = `John Doe
 partyguy99@hotmail.com
 
@@ -157,6 +165,8 @@ Computers, typing, coding, Microsoft Word.`
     const blob = new Blob([poorText], { type: 'text/plain' })
     setFile(new File([blob], 'demo_resume_weak.txt', { type: 'text/plain' }))
     setResumeText(poorText)
+    setTextModified(false)
+    setResult(null)
     notify('Loaded weak resume demo (sample data)')
   }
 
@@ -180,6 +190,8 @@ Requirements:
   }
 
   // Run analysis
+  // BUG FIX: Always prefer extracted resumeText for re-scans.
+  // This prevents binary re-upload on re-scans which caused score=9 on some PDF files.
   const handleAnalyze = async () => {
     if (!file && !resumeText.trim()) {
       setError('Upload a resume file or paste text in the Text Editor tab.')
@@ -189,12 +201,18 @@ Requirements:
     setLoading(true)
 
     const formData = new FormData()
-    if (file && !resumeText) {
-      formData.append('resume', file)
-    } else {
+
+    // If we already have extracted/edited text (from previous parse or manual edit),
+    // always use it. This prevents binary re-upload from causing score variability.
+    // Only send the binary file on the very first analysis (no text yet).
+    if (resumeText.trim()) {
       formData.append('resumeText', resumeText)
       formData.append('filename', file ? file.name : 'resume_editor.txt')
+    } else if (file) {
+      // No text yet — send binary file for first-time extraction
+      formData.append('resume', file)
     }
+
     if (jobDescription) formData.append('jobDescription', jobDescription)
 
     const headers = token ? { Authorization: `Bearer ${token}` } : {}
@@ -202,10 +220,11 @@ Requirements:
     try {
       const response = await axios.post('/api/resumes/analyze', formData, { headers })
       setResult(response.data)
-      if (!resumeText && response.data?.extraction?.text) {
+      // Populate resumeText from extracted content so subsequent re-scans use text
+      if (response.data?.extraction?.text && !textModified) {
         setResumeText(response.data.extraction.text)
       }
-      notify(`Analysis complete — Score: ${response.data.scoring.overallScore}/100`)
+      notify(`Analysis complete — Score: ${response.data.scoring.overallScore}/100`, 'success')
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Analysis failed')
     } finally {
@@ -213,11 +232,70 @@ Requirements:
     }
   }
 
-  // Add a missing skill to the skills section of the resume text
+  // Handle PDF report downloads
+  // BUG FIX: Always use POST /report/generate for current analysis (works for ALL users including guests).
+  // Only use GET /:id/report when downloading from history (requires saved ID + auth).
+  const handleDownloadReport = async (reportId = null, customFilename = null) => {
+    setDownloadingReport(true)
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : {}
+      let response
+      let targetName = customFilename || (file ? file.name : (result?.filename || 'Resume'))
+      targetName = targetName.replace(/[^\w.-]/g, '_').replace(/\.pdf$/i, '')
+
+      if (reportId && token) {
+        // Downloading a saved historical report (requires auth + ownership)
+        response = await axios.get(`/api/resumes/${reportId}/report`, {
+          headers,
+          responseType: 'blob'
+        })
+      } else if (result?.scoring) {
+        // On-demand PDF generation from current analysis (works for ALL users)
+        response = await axios.post('/api/resumes/report/generate', {
+          scoring: result.scoring,
+          jdMatch: result.jdMatch,
+          filename: targetName
+        }, {
+          headers,
+          responseType: 'blob'
+        })
+      } else {
+        notify('No analysis result available to generate report.', 'error')
+        return
+      }
+
+      const blob = new Blob([response.data], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ATS_Report_${targetName}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(link)
+      notify('PDF report downloaded successfully!', 'success')
+    } catch (err) {
+      console.error('Download report error:', err)
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text()
+          const json = JSON.parse(text)
+          notify(json.error || 'Failed to download report.', 'error')
+        } catch {
+          notify('Failed to download report.', 'error')
+        }
+      } else {
+        notify(err.response?.data?.error || err.message || 'Failed to download report.', 'error')
+      }
+    } finally {
+      setDownloadingReport(false)
+    }
+  }
+
   const handleAddSkillToResume = (skill) => {
     let current = resumeText || (result?.extraction?.text || '')
     if (!current) {
-      notify('No resume text found. Use the Text Editor tab to paste your resume.')
+      notify('No resume text found. Use the Text Editor tab to paste your resume.', 'error')
       return
     }
     if (current.toLowerCase().includes(skill.toLowerCase())) {
@@ -238,7 +316,8 @@ Requirements:
     }
 
     setResumeText(current)
-    notify(`Added "${skill}" to Skills. Click "Re-Scan" to update score.`)
+    setTextModified(true)
+    notify(`Added "${skill}" to Skills. Click "Re-Scan" to update score.`, 'success')
   }
 
   const handleAddCustomRequirement = (skill) => {
@@ -246,7 +325,6 @@ Requirements:
     setCustomRequirement('')
   }
 
-  // Get a bullet point suggestion for a missing skill
   const handleGenerateBullet = async (skill) => {
     setGeneratingBulletFor(skill)
     try {
@@ -258,13 +336,12 @@ Requirements:
       }, { headers })
       setBulletModal(res.data)
     } catch (err) {
-      notify(`Could not generate bullet: ${err.response?.data?.error || err.message}`)
+      notify(`Could not generate bullet: ${err.response?.data?.error || err.message}`, 'error')
     } finally {
       setGeneratingBulletFor(null)
     }
   }
 
-  // Inject a bullet into the experience section of the resume text
   const handleInjectBullet = (bullet) => {
     let current = resumeText || (result?.extraction?.text || '')
     const expRegex = /(PROFESSIONAL\s+EXPERIENCE|WORK\s+EXPERIENCE|EXPERIENCE)([\s\S]*?)(?=(EDUCATION|PROJECTS|CERTIFICATIONS|$))/i
@@ -283,8 +360,9 @@ Requirements:
     }
 
     setResumeText(current)
+    setTextModified(true)
     setBulletModal(null)
-    notify('Bullet added to resume text. Click "Re-Scan" to update score.')
+    notify('Bullet added to resume text. Click "Re-Scan" to update score.', 'success')
   }
 
   const handleCopyBullet = (text) => {
@@ -293,12 +371,21 @@ Requirements:
   }
 
   return (
-    <div className="min-h-screen bg-[#090D16] text-slate-200 antialiased font-sans">
-      {/* Toast */}
+    <div className="min-h-screen bg-[#060B14] text-slate-200 antialiased font-sans">
+      {/* Toast notification */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2">
-          <Zap className="w-4 h-4 text-blue-400 flex-shrink-0" />
-          <span>{toast}</span>
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm max-w-xs ${toast.type === 'success'
+          ? 'bg-emerald-950/90 border-emerald-700/60 text-emerald-200'
+          : toast.type === 'error'
+            ? 'bg-rose-950/90 border-rose-700/60 text-rose-200'
+            : 'bg-slate-900/95 border-slate-700/60 text-slate-100'
+          }`}>
+          {toast.type === 'success' ? (
+            <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          ) : (
+            <Zap className="w-4 h-4 text-blue-400 flex-shrink-0" />
+          )}
+          <span className="text-xs font-medium">{toast.msg}</span>
         </div>
       )}
 
@@ -309,7 +396,7 @@ Requirements:
         onHistory={fetchHistory}
       />
 
-      <main className="max-w-[1560px] mx-auto px-4 sm:px-6 py-6">
+      <main className="max-w-[1560px] mx-auto px-4 sm:px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
           {/* Left column: input */}
@@ -322,9 +409,9 @@ Requirements:
               editorTab={editorTab}
               onTabChange={setEditorTab}
               onFileChange={handleFileChange}
-              onTextChange={setResumeText}
+              onTextChange={(val) => { setResumeText(val); setTextModified(true) }}
               onJdChange={setJobDescription}
-              onClearFile={() => { setFile(null); setResumeText('') }}
+              onClearFile={() => { setFile(null); setResumeText(''); setTextModified(false); setResult(null) }}
               onAnalyze={handleAnalyze}
               onLoadSampleGood={handleLoadSampleGood}
               onLoadSamplePoor={handleLoadSamplePoor}
@@ -338,8 +425,9 @@ Requirements:
             )}
 
             {!currentUser && (
-              <div className="p-3 rounded-xl border border-slate-800/60 bg-[#0D1424]/50 text-[11px] text-slate-500">
-                Sign in to save your analysis history and download PDF reports.
+              <div className="p-3 rounded-xl border border-slate-800/40 bg-[#0A1020]/60 text-[11px] text-slate-500 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60 flex-shrink-0" />
+                Sign in to save analysis history. PDF download works without signing in.
               </div>
             )}
           </div>
@@ -352,6 +440,8 @@ Requirements:
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 onReAnalyze={handleAnalyze}
+                onDownloadReport={handleDownloadReport}
+                downloadingReport={downloadingReport}
                 onAddSkillToResume={handleAddSkillToResume}
                 onGenerateBullet={handleGenerateBullet}
                 generatingBulletFor={generatingBulletFor}
@@ -360,29 +450,7 @@ Requirements:
                 onAddCustomRequirement={handleAddCustomRequirement}
               />
             ) : (
-              <div className="bg-[#0F1626] border border-slate-800/90 rounded-xl p-12 text-center shadow-xl flex flex-col items-center justify-center min-h-[480px]">
-                <div className="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-4 text-2xl font-bold">
-                  R
-                </div>
-                <h3 className="text-base font-bold text-slate-100 mb-1">Ready to analyze</h3>
-                <p className="text-xs text-slate-400 max-w-md leading-relaxed mb-6">
-                  Upload a resume on the left, optionally add a job description, and click "Run Analysis".
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleLoadSampleGood}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
-                  >
-                    Load Demo Resume
-                  </button>
-                  <button
-                    onClick={handleLoadSamplePoor}
-                    className="px-4 py-2 bg-slate-800/60 hover:bg-slate-800 text-slate-400 rounded-lg text-xs font-semibold transition"
-                  >
-                    Load Weak Resume Demo
-                  </button>
-                </div>
-              </div>
+              <EmptyState onLoadSampleGood={handleLoadSampleGood} onLoadSamplePoor={handleLoadSamplePoor} />
             )}
           </div>
         </div>
@@ -400,6 +468,7 @@ Requirements:
         <HistoryDrawer
           historyList={historyList}
           onClose={() => setShowHistory(false)}
+          onDownloadReport={handleDownloadReport}
         />
       )}
 
@@ -411,6 +480,54 @@ Requirements:
           onInject={handleInjectBullet}
         />
       )}
+    </div>
+  )
+}
+
+function EmptyState({ onLoadSampleGood, onLoadSamplePoor }) {
+  return (
+    <div className="bg-[#0C1424] border border-slate-800/60 rounded-2xl p-12 text-center shadow-xl flex flex-col items-center justify-center min-h-[520px] relative overflow-hidden">
+      {/* Background glow */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-blue-600/5 blur-3xl" />
+      </div>
+
+      {/* Icon */}
+      <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600/20 to-violet-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-6 shadow-lg shadow-blue-900/20">
+        <svg className="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+
+      <h3 className="text-lg font-bold text-slate-100 mb-2">Ready to Analyze</h3>
+      <p className="text-sm text-slate-400 max-w-sm leading-relaxed mb-8">
+        Upload your resume on the left, optionally paste a job description, and hit{' '}
+        <span className="text-blue-400 font-medium">Run Analysis</span> to get your ATS score.
+      </p>
+
+      {/* Feature badges */}
+      <div className="flex flex-wrap justify-center gap-2 mb-8">
+        {['ATS Score', 'Keyword Gap Analysis', 'AI Coaching', 'PDF Report'].map(f => (
+          <span key={f} className="px-3 py-1 rounded-full bg-slate-800/70 border border-slate-700/50 text-[11px] text-slate-400 font-medium">
+            {f}
+          </span>
+        ))}
+      </div>
+
+      <div className="flex gap-3 flex-wrap justify-center">
+        <button
+          onClick={onLoadSampleGood}
+          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-blue-900/30"
+        >
+          Load Strong Resume Demo
+        </button>
+        <button
+          onClick={onLoadSamplePoor}
+          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition border border-slate-700/60"
+        >
+          Load Weak Resume Demo
+        </button>
+      </div>
     </div>
   )
 }

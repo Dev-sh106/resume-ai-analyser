@@ -18,6 +18,7 @@ router.post("/analyze", protect, upload.single("resume"), async (req, res) => {
   try {
     let fileBuffer = null;
     let filename = "resume.txt";
+    let isRawText = false;
 
     if (req.file) {
       fileBuffer = req.file.buffer;
@@ -25,6 +26,7 @@ router.post("/analyze", protect, upload.single("resume"), async (req, res) => {
     } else if (req.body.resumeText) {
       fileBuffer = Buffer.from(req.body.resumeText, "utf-8");
       filename = req.body.filename || "pasted_resume.txt";
+      isRawText = true;
     } else {
       return res.status(400).json({ error: "Please upload a resume file (PDF/DOCX/TXT) or provide resume text." });
     }
@@ -36,7 +38,9 @@ router.post("/analyze", protect, upload.single("resume"), async (req, res) => {
     const affindaApiKey = process.env.AFFINDA_API_KEY;
 
     // Step 1: Resume extraction (Affinda API or local parser fallback)
-    const extractionResult = await AffindaService.parseResume(fileBuffer, filename, affindaApiKey);
+    // When text is provided directly (e.g. from editor or re-scan), parse as .txt to avoid binary decoder errors
+    const parseFilename = isRawText ? filename.replace(/\.(pdf|docx?)$/i, ".txt") : filename;
+    const extractionResult = await AffindaService.parseResume(fileBuffer, parseFilename, affindaApiKey);
     const extractionData = extractionResult.metadata;
 
     // Step 2: Deterministic ATS engine
@@ -155,8 +159,31 @@ router.get("/:id/report", protect, async (req, res) => {
       jdMatch: doc.jdMatch
     }, doc.filename);
 
+    const safeFilename = (doc.filename || "Resume").replace(/[^\w.-]/g, "_").replace(/\.pdf$/i, "");
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="ATS_Report_${doc.filename}.pdf"`);
+    res.setHeader("Content-Disposition", `attachment; filename="ATS_Report_${safeFilename}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/resumes/report/generate — PDF report generation from analysis result (supports guest & in-memory analyses)
+router.post("/report/generate", protect, async (req, res) => {
+  try {
+    const { scoring, jdMatch, filename = "Resume" } = req.body;
+    if (!scoring) {
+      return res.status(400).json({ error: "Scoring data is required to generate report." });
+    }
+
+    const pdfBuffer = await PDFReportGenerator.generateReportBuffer({
+      scoring,
+      jdMatch
+    }, filename);
+
+    const safeFilename = (filename || "Resume").replace(/[^\w.-]/g, "_").replace(/\.pdf$/i, "");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="ATS_Report_${safeFilename}.pdf"`);
     res.send(pdfBuffer);
   } catch (err) {
     res.status(500).json({ error: err.message });
