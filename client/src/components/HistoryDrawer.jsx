@@ -84,8 +84,8 @@ export default function HistoryDrawer({ historyList, onClose, onDownloadReport }
                         </span>
                       </div>
                       <button
-                        onClick={() => onDownloadReport(item._id, item.filename)}
-                        className="p-2 bg-slate-800/60 hover:bg-blue-600/20 hover:border-blue-500/40 border border-slate-700/40 rounded-lg text-slate-400 hover:text-blue-400 transition"
+                        onClick={() => onDownloadReport(item._id ? String(item._id) : null, item.filename)}
+                        className="p-2 bg-slate-800/60 hover:bg-blue-600/20 hover:border-blue-500/40 border border-slate-700/40 rounded-lg text-slate-400 hover:text-blue-400 transition cursor-pointer"
                         title="Download PDF report"
                       >
                         <Download className="w-3.5 h-3.5" />

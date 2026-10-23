@@ -84,6 +84,28 @@ async function testApi() {
     const bulletJson = await bulletRes.json();
     console.log(`[PASS] Generated STAR bullet for "${bulletJson.skill}": ${bulletJson.bullet.slice(0, 60)}...`);
 
+    // 6. Test defensive handling of invalid ObjectId (e.g. [object Object] from client bug)
+    const jwt = require("jsonwebtoken");
+    const User = require("./models/User");
+    let testUser = await User.findOne({ email: "test_bot@resumetester.local" });
+    if (!testUser) {
+      testUser = await User.create({
+        name: "Test Bot",
+        email: "test_bot@resumetester.local",
+        password: "Password123!"
+      });
+    }
+    const testToken = jwt.sign({ id: testUser._id }, process.env.JWT_SECRET || "resumetester_jwt_secret_dev_key_2026");
+    
+    const invalidIdRes = await fetch(`http://localhost:${port}/api/resumes/[object%20Object]/report`, {
+      headers: { Authorization: `Bearer ${testToken}` }
+    });
+    if (invalidIdRes.status !== 400) {
+      throw new Error(`Expected 400 for [object Object] report id, got ${invalidIdRes.status}`);
+    }
+    const invalidIdJson = await invalidIdRes.json();
+    console.log(`[PASS] Invalid ObjectId handled cleanly with 400: ${invalidIdJson.error}`);
+
     console.log("\nALL HTTP REST API TESTS PASSED!");
   } finally {
     server.close();

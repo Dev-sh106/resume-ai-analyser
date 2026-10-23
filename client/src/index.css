@@ -36,6 +36,17 @@
   .animate-toast {
     animation: slideInUp 0.3s ease-out;
   }
+  .glass-card {
+    background: rgba(10, 16, 32, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(51, 65, 85, 0.6);
+  }
+  .glow-blue {
+    box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.25);
+  }
+  .glow-emerald {
+    box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+  }
 }
 
 @keyframes slideInUp {

@@ -11,6 +11,7 @@ const OpenAIService = require("../services/openaiService");
 const PDFReportGenerator = require("../services/pdfReportGenerator");
 const DeterministicATSEngine = require("../atsEngine");
 const ResumeAnalysis = require("../models/ResumeAnalysis");
+const mongoose = require("mongoose");
 
 // POST /api/resumes/analyze
 // Auth is optional: analysis always works, but results are only saved when logged in.
@@ -118,10 +119,36 @@ router.get("/history", protect, async (req, res) => {
   }
 });
 
+// POST /api/resumes/report/generate — PDF report generation from analysis result (supports guest & in-memory analyses)
+// Defined before /:id parameter routes to prevent route collisions
+router.post("/report/generate", protect, async (req, res) => {
+  try {
+    const { scoring, jdMatch, filename = "Resume" } = req.body;
+    if (!scoring) {
+      return res.status(400).json({ error: "Scoring data is required to generate report." });
+    }
+
+    const pdfBuffer = await PDFReportGenerator.generateReportBuffer({
+      scoring,
+      jdMatch
+    }, filename);
+
+    const safeFilename = (filename || "Resume").replace(/[^\w.-]/g, "_").replace(/\.pdf$/i, "");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="ATS_Report_${safeFilename}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/resumes/:id — requires login, only the owner can view
 router.get("/:id", protect, async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: "Authentication required." });
+  }
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: "Invalid analysis ID." });
   }
   try {
     const doc = await ResumeAnalysis.findById(req.params.id);
@@ -139,6 +166,9 @@ router.get("/:id", protect, async (req, res) => {
 router.get("/:id/report", protect, async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: "Authentication required to download reports." });
+  }
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ error: "Invalid analysis ID. Please verify the report ID or generate an on-demand report." });
   }
   try {
     const doc = await ResumeAnalysis.findById(req.params.id);
@@ -160,28 +190,6 @@ router.get("/:id/report", protect, async (req, res) => {
     }, doc.filename);
 
     const safeFilename = (doc.filename || "Resume").replace(/[^\w.-]/g, "_").replace(/\.pdf$/i, "");
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="ATS_Report_${safeFilename}.pdf"`);
-    res.send(pdfBuffer);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/resumes/report/generate — PDF report generation from analysis result (supports guest & in-memory analyses)
-router.post("/report/generate", protect, async (req, res) => {
-  try {
-    const { scoring, jdMatch, filename = "Resume" } = req.body;
-    if (!scoring) {
-      return res.status(400).json({ error: "Scoring data is required to generate report." });
-    }
-
-    const pdfBuffer = await PDFReportGenerator.generateReportBuffer({
-      scoring,
-      jdMatch
-    }, filename);
-
-    const safeFilename = (filename || "Resume").replace(/[^\w.-]/g, "_").replace(/\.pdf$/i, "");
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="ATS_Report_${safeFilename}.pdf"`);
     res.send(pdfBuffer);

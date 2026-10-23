@@ -233,19 +233,31 @@ Requirements:
   }
 
   // Handle PDF report downloads
-  // BUG FIX: Always use POST /report/generate for current analysis (works for ALL users including guests).
-  // Only use GET /:id/report when downloading from history (requires saved ID + auth).
-  const handleDownloadReport = async (reportId = null, customFilename = null) => {
+  // Robust against React event objects, invalid IDs, and guest sessions:
+  // - If a valid 24-character hexadecimal MongoDB ObjectId is provided with auth, fetch historical report.
+  // - Otherwise, generate on-demand PDF report directly from the active analysis result.
+  const handleDownloadReport = async (reportIdArg = null, customFilename = null) => {
     setDownloadingReport(true)
     try {
       const headers = token ? { Authorization: `Bearer ${token}` } : {}
       let response
-      let targetName = customFilename || (file ? file.name : (result?.filename || 'Resume'))
+      let targetName = (typeof customFilename === 'string' ? customFilename : null) || (file ? file.name : (result?.filename || 'Resume'))
       targetName = targetName.replace(/[^\w.-]/g, '_').replace(/\.pdf$/i, '')
 
-      if (reportId && token) {
+      // Check for valid 24-char hex MongoDB ObjectId, ignoring React SyntheticEvents or arbitrary objects
+      let validReportId = null
+      if (typeof reportIdArg === 'string' && /^[0-9a-fA-F]{24}$/.test(reportIdArg.trim())) {
+        validReportId = reportIdArg.trim()
+      } else if (reportIdArg && typeof reportIdArg === 'object' && !reportIdArg.nativeEvent && !reportIdArg.target) {
+        const candidate = reportIdArg._id || reportIdArg.id || reportIdArg.$oid
+        if (typeof candidate === 'string' && /^[0-9a-fA-F]{24}$/.test(candidate.trim())) {
+          validReportId = candidate.trim()
+        }
+      }
+
+      if (validReportId && token) {
         // Downloading a saved historical report (requires auth + ownership)
-        response = await axios.get(`/api/resumes/${reportId}/report`, {
+        response = await axios.get(`/api/resumes/${validReportId}/report`, {
           headers,
           responseType: 'blob'
         })
@@ -486,44 +498,53 @@ Requirements:
 
 function EmptyState({ onLoadSampleGood, onLoadSamplePoor }) {
   return (
-    <div className="bg-[#0C1424] border border-slate-800/60 rounded-2xl p-12 text-center shadow-xl flex flex-col items-center justify-center min-h-[520px] relative overflow-hidden">
-      {/* Background glow */}
+    <div className="bg-[#0A1020]/90 border border-slate-800/80 rounded-2xl p-8 sm:p-12 text-center shadow-2xl shadow-black/40 flex flex-col items-center justify-center min-h-[540px] relative overflow-hidden backdrop-blur-md">
+      {/* Dynamic ambient background glow */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-blue-600/5 blur-3xl" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-blue-600/10 blur-[100px]" />
+        <div className="absolute bottom-10 right-10 w-64 h-64 rounded-full bg-indigo-600/10 blur-[80px]" />
       </div>
 
-      {/* Icon */}
-      <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600/20 to-violet-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-6 shadow-lg shadow-blue-900/20">
-        <svg className="w-9 h-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      {/* Hero Icon with glowing halo */}
+      <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-600/30 via-indigo-600/20 to-cyan-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center mb-6 shadow-xl shadow-blue-950/50 ring-1 ring-white/10">
+        <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
           <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
 
-      <h3 className="text-lg font-bold text-slate-100 mb-2">Ready to Analyze</h3>
-      <p className="text-sm text-slate-400 max-w-sm leading-relaxed mb-8">
-        Upload your resume on the left, optionally paste a job description, and hit{' '}
-        <span className="text-blue-400 font-medium">Run Analysis</span> to get your ATS score.
+      <h3 className="text-xl font-extrabold text-white mb-2 tracking-tight">
+        Ready for Real-Time ATS Audit
+      </h3>
+      <p className="text-sm text-slate-300 max-w-md leading-relaxed mb-8">
+        Upload your resume or paste the text on the left, attach a job description, and run a comprehensive ATS pass-rate analysis.
       </p>
 
-      {/* Feature badges */}
-      <div className="flex flex-wrap justify-center gap-2 mb-8">
-        {['ATS Score', 'Keyword Gap Analysis', 'AI Coaching', 'PDF Report'].map(f => (
-          <span key={f} className="px-3 py-1 rounded-full bg-slate-800/70 border border-slate-700/50 text-[11px] text-slate-400 font-medium">
-            {f}
-          </span>
+      {/* Feature Value Proposition Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-2xl mb-8">
+        {[
+          { title: 'Deterministic ATS', desc: 'No hallucinated scores; exact 100-pt algorithm' },
+          { title: 'Keyword Gap Analysis', desc: 'Identifies missing skills from your target job' },
+          { title: 'AI STAR Bullets', desc: '1-click impact bullets with metrics' },
+          { title: 'Executive PDF Audit', desc: 'Downloadable ATS report ready for recruiters' },
+        ].map((f, i) => (
+          <div key={i} className="p-3 bg-[#070D18]/80 border border-slate-800/80 rounded-xl text-left">
+            <p className="text-[11px] font-bold text-blue-400 mb-0.5">{f.title}</p>
+            <p className="text-[10px] text-slate-400 leading-snug">{f.desc}</p>
+          </div>
         ))}
       </div>
 
-      <div className="flex gap-3 flex-wrap justify-center">
+      {/* Demo Action Buttons */}
+      <div className="flex gap-3 flex-wrap justify-center relative z-10">
         <button
           onClick={onLoadSampleGood}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-lg shadow-blue-900/30"
+          className="px-6 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-xl shadow-blue-950/50 cursor-pointer border border-blue-400/20"
         >
           Load Strong Resume Demo
         </button>
         <button
           onClick={onLoadSamplePoor}
-          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition border border-slate-700/60"
+          className="px-6 py-2.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 rounded-xl text-xs font-semibold transition border border-slate-700/60 cursor-pointer"
         >
           Load Weak Resume Demo
         </button>
